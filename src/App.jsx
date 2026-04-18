@@ -25,7 +25,7 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
     letterSpacing: 0.4,
     fontWeight: 400,
     fontSmoothing: 'auto',
-    sizeMultiplier: 0.92, // Zaktualizowano domyślną skalę na 0.92
+    sizeMultiplier: 0.92,
     uiScale: 1.5,
     wordWrap: true
   };
@@ -47,34 +47,40 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
   
   const [showAdjust, setShowAdjust] = useState(false);
   const [activeColor, setActiveColor] = useState('#f90');
-  const [activeSize, setActiveSize] = useState(45); // Domyślny rozmiar size it
+  const [activeSize, setActiveSize] = useState(45); 
   
   const [leftPanelWidth, setLeftPanelWidth] = useState(50);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isZoomHighlighted, setIsZoomHighlighted] = useState(true);
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
   
   const previewRef = useRef(null);
   const isTypingRef = useRef(false);
+  const colorMenuRef = useRef(null);
 
   const charCount = text.length;
   const isOverLimit = charCount > 2000;
 
   const colorOptions = [
-    { name: 'Golden', value: '#f90' },
-    { name: 'Gold Leaf', value: '#fc0' },
+    { name: 'Amethyst', value: '#a0f' },
     { name: 'Diamond', value: '#0cf' },
-    { name: 'Green', value: '#4d0' },
-    { name: 'Red', value: '#f30' },
     { name: 'Gems', value: '#c00' },
-    { name: 'Amethyst', value: '#a0f' }
+    { name: 'Gold Leaf', value: '#fc0' },
+    { name: 'Golden', value: '#f90' },
+    { name: 'Green', value: '#4d0' },
+    { name: 'Red', value: '#f30' }
   ];
 
   useEffect(() => {
     const width = window.innerWidth;
     if (width < 1200) {
       setZoomLevel(Math.max(25, Math.floor((width / 1200) * 100)));
+      setIsMobileView(true); // Mobile -> pokazuje kontrolki zoomu i natywny select
+    } else {
+      setIsMobileView(false); // Desktop -> ukrywa kontrolki zoomu
     }
   }, []);
 
@@ -131,6 +137,20 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
     };
   }, [isDraggingDivider]);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (colorMenuRef.current && !colorMenuRef.current.contains(event.target)) {
+        setIsColorMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
   const rgbToHex = (rgb) => {
     const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
     if (!match) return rgb;
@@ -139,14 +159,22 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
 
   const normalizeColor = (col) => {
     if (!col) return null;
-    col = col.toLowerCase();
+    col = col.toLowerCase().trim();
+    
+    if (col.startsWith('rgb')) {
+        const match = col.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+            col = "#" + match.slice(1, 4).map(n => parseInt(n, 10).toString(16).padStart(2, '0')).join('');
+        }
+    }
+    
     const map = { 
       '#ffcc00': '#fc0', '#ff9900': '#f90', '#00ccff': '#0cf', '#ff3300': '#f30',
       '#44dd00': '#4d0', '#cc0000': '#c00', '#aa00ff': '#a0f'
     };
-    if (map[col]) return map[col];
-    if (col.startsWith('rgb')) return rgbToHex(col);
-    if (col.length === 7 && col[1] === col[2] && col[3] === col[4] && col[5] === col[6]) {
+    if (map[col]) col = map[col];
+    
+    if (col.length === 7 && col[0] === '#' && col[1] === col[2] && col[3] === col[4] && col[5] === col[6]) {
       col = '#' + col[1] + col[3] + col[5];
     }
     return col;
@@ -164,9 +192,22 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
         if (tag === 'br') return '\n';
         if (tag === 'b' || tag === 'strong' || node.style.fontWeight === 'bold') { prefix += '<b>'; suffix = '</b>' + suffix; }
         if (tag === 'i' || tag === 'em' || node.style.fontStyle === 'italic') { prefix += '<i>'; suffix = '</i>' + suffix; }
-        if (tag === 'font' && node.getAttribute('color')) { prefix += `<color=${normalizeColor(node.getAttribute('color'))}>`; suffix = '</color>' + suffix; }
+        
+        let colorApplied = null;
+        
+        if (tag === 'font' && node.getAttribute('color')) { 
+            colorApplied = normalizeColor(node.getAttribute('color'));
+            prefix += `<color=${colorApplied}>`; 
+            suffix = '</color>' + suffix; 
+        }
         if (node.style) {
-            if (node.style.color) { prefix += `<color=${normalizeColor(node.style.color)}>`; suffix = '</color>' + suffix; }
+            if (node.style.color) { 
+                let styleColor = normalizeColor(node.style.color);
+                if (styleColor && styleColor !== colorApplied) {
+                    prefix += `<color=${styleColor}>`; 
+                    suffix = '</color>' + suffix; 
+                }
+            }
             if (node.style.fontSize) { 
               const size = parseFloat(node.style.fontSize);
               if (!isNaN(size)) {
@@ -302,33 +343,35 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
             <h1 className="text-lg font-bold tracking-wide text-white">Game Rich Text Editor</h1>
           </div>
           
-          <div className="flex items-center gap-1 bg-slate-950 rounded-lg border border-slate-700 shadow-inner overflow-hidden relative">
-            <button 
-              onClick={() => setZoomLevel(z => Math.max(20, z - 10))} 
-              className="px-4 py-1.5 text-slate-400 hover:text-amber-500 hover:bg-slate-800 transition-colors active:bg-slate-700"
-              title="Oddal (Zoom Out)"
-            >
-              <Minus size={18} />
-            </button>
-            <span className="text-sm font-mono font-semibold text-slate-300 w-12 text-center select-none">
-              {zoomLevel}%
-            </span>
-            <button 
-              onClick={() => {
-                setZoomLevel(z => Math.min(200, z + 10));
-                setIsZoomHighlighted(false);
-              }} 
-              className={`flex items-center justify-center transition-all duration-1000 ease-in-out
-                ${isZoomHighlighted 
-                  ? 'px-8 py-3 bg-amber-500/20 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.4)]' 
-                  : 'px-4 py-1.5 text-slate-400 hover:text-amber-500 hover:bg-slate-800 active:bg-slate-700'
-                }
-              `}
-              title="Przybliż (Zoom In)"
-            >
-              <Plus size={isZoomHighlighted ? 26 : 18} className="transition-all duration-1000 ease-in-out" />
-            </button>
-          </div>
+          {isMobileView && (
+            <div className="flex items-center gap-1 bg-slate-950 rounded-lg border border-slate-700 shadow-inner overflow-hidden relative">
+              <button 
+                onClick={() => setZoomLevel(z => Math.max(20, z - 10))} 
+                className="px-4 py-1.5 text-slate-400 hover:text-amber-500 hover:bg-slate-800 transition-colors active:bg-slate-700"
+                title="Oddal (Zoom Out)"
+              >
+                <Minus size={18} />
+              </button>
+              <span className="text-sm font-mono font-semibold text-slate-300 w-12 text-center select-none">
+                {zoomLevel}%
+              </span>
+              <button 
+                onClick={() => {
+                  setZoomLevel(z => Math.min(200, z + 10));
+                  setIsZoomHighlighted(false);
+                }} 
+                className={`flex items-center justify-center transition-all duration-1000 ease-in-out
+                  ${isZoomHighlighted 
+                    ? 'px-8 py-3 bg-amber-500/20 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.4)]' 
+                    : 'px-4 py-1.5 text-slate-400 hover:text-amber-500 hover:bg-slate-800 active:bg-slate-700'
+                  }
+                `}
+                title="Przybliż (Zoom In)"
+              >
+                <Plus size={isZoomHighlighted ? 26 : 18} className="transition-all duration-1000 ease-in-out" />
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <button 
@@ -475,7 +518,6 @@ You are now part of our <color=#0cf><b>First Shard</b></color>. In this Kin, we 
                   <Italic size={15 * uiScale} />
                 </button>
 
-                {/* MODUŁ SIZE PRZESUNIĘTY NA PRAWO OD BOLD/ITALIC */}
                 <div className="bg-slate-700" style={{ width: '1px', height: `${18 * uiScale}px`, margin: `0 ${4 * uiScale}px` }}></div>
                 
                 <button 
